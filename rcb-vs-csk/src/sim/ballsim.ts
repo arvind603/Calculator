@@ -100,7 +100,7 @@ export function buildFielders(
   const k = keeperSpot(kind);
   out.push({ id: team.keeperId, spot: k.name, x: k.x, z: k.z, speed: 5.6, react: 0.2, keeper: true });
   const arm = bowler.bowl!.arm === 'R' ? -1 : 1;
-  out.push({ id: bowler.id, spot: 'bowler', x: arm * 1.6, z: 5.2, speed: 6, react: 0.8, bowler: true });
+  out.push({ id: bowler.id, spot: 'bowler', x: arm * 2.3, z: 5.2, speed: 6, react: 0.8, bowler: true });
   void difficulty;
   return out;
 }
@@ -233,6 +233,23 @@ export class BallSim {
     if (tp >= m.t1) return { x: m.tx, z: m.tz, moving: false };
     const k = (tp - m.t0) / (m.t1 - m.t0);
     return { x: m.fx + (m.tx - m.fx) * k, z: m.fz + (m.tz - m.fz) * k, moving: true };
+  }
+
+  /** Seconds until the fielder throws. Negative if no throw is pending. */
+  get throwIn(): number {
+    return this.holding ? this.throwAt - this.playT : -1;
+  }
+
+  get isCaught(): boolean {
+    return this.caught;
+  }
+
+  get isBoundary(): 0 | 4 | 6 {
+    return this.boundary;
+  }
+
+  get hasContact(): boolean {
+    return this.path !== null;
   }
 
   /** Advice for the running call. */

@@ -165,7 +165,8 @@ function boardTexture(): THREE.Texture {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = THREE.RepeatWrapping;
-  t.repeat.set(6, 1);
+  // The boards are seen from inside the cylinder, so the texture is flipped.
+  t.repeat.set(-6, 1);
   return t;
 }
 

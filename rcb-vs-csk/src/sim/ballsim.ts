@@ -439,7 +439,7 @@ export class BallSim {
     fs.forEach((f, i) => {
       if (i === plan.fielder) return;
       if (f.keeper) set(i, 0.25, STRIKER_STUMPS_Z - 0.7);
-      else if (f.bowler) set(i, -0.3, BOWLER_STUMPS_Z + 0.5);
+      else if (f.bowler) set(i, 0.45, BOWLER_STUMPS_Z - 0.7);
     });
   }
 

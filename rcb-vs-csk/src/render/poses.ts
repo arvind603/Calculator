@@ -10,8 +10,8 @@ type V3 = [number, number, number];
 // ---------- Batting ----------
 
 export const STANCE = makePose({
-  pelvis: [0, 0.8, -0.03],
-  lean: 0.5,
+  pelvis: [0, 0.87, -0.03],
+  lean: 0.62,
   twist: 0.1,
   headYaw: 1.2,
   headPitch: 0.04,
@@ -19,19 +19,19 @@ export const STANCE = makePose({
   footR: [-0.22, 0, 0],
   footYawL: 0.3,
   footYawR: 0.05,
-  grip: [0.03, 0.72, 0.27],
+  grip: [0.03, 0.72, 0.3],
   batDir: [-0.36, -0.92, -0.1],
   batFace: [0.9, -0.3, 0.2],
   batMode: 1,
 });
 
 /** Small bat tap while the batter waits. */
-export const STANCE_TAP = makePose({ grip: [0.03, 0.76, 0.27], batDir: [-0.33, -0.93, -0.1], pelvis: [0, 0.81, -0.03] }, STANCE);
+export const STANCE_TAP = makePose({ grip: [0.03, 0.77, 0.3], batDir: [-0.33, -0.93, -0.1], pelvis: [0, 0.875, -0.03] }, STANCE);
 
 export const BACKLIFT = makePose(
   {
-    pelvis: [0, 0.82, -0.03],
-    lean: 0.42,
+    pelvis: [0, 0.87, -0.03],
+    lean: 0.48,
     twist: -0.14,
     headYaw: 1.3,
     grip: [-0.17, 0.98, 0.16],

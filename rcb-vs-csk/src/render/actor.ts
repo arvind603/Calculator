@@ -32,6 +32,15 @@ export class Actor {
     this.fig = fig;
   }
 
+  /** Movement does not change the pose for this time. */
+  busyFor(sec: number) {
+    this.busyUntil = this.clock + sec;
+  }
+
+  get isBusy() {
+    return this.clock < this.busyUntil;
+  }
+
   get isRunning() {
     return this.running;
   }

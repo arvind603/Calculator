@@ -275,8 +275,8 @@ export function makeBat(gripColor: number): THREE.Group {
 
 // ---------- Figure ----------
 
-const UPPER_ARM = 0.28;
-const FORE_ARM = 0.26;
+const UPPER_ARM = 0.3;
+const FORE_ARM = 0.27;
 const THIGH = 0.44;
 const SHIN = 0.44;
 const ANKLE = 0.07;

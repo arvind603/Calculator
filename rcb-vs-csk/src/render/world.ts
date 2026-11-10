@@ -920,8 +920,8 @@ export class World {
     const b = this.ballFx.mesh.position;
     if (r.cam === 'side') {
       this.desPos.set(off * 7.5, 1.7, STRIKER_CREASE_Z + 4.4);
-      this.desLook.set(0, 0.8, STRIKER_STUMPS_Z + 0.5);
-      this.desFov = this.aspect < 1 ? 34 : 22;
+      this.desLook.set(-off * 0.15, 0.85, STRIKER_STUMPS_Z + 0.75);
+      this.desFov = this.aspect < 1 ? 42 : 22;
     } else if (r.cam === 'end') {
       const z = r.focus.z;
       this.desPos.set(9, 2.2, z + (z > 0 ? -3 : 3));

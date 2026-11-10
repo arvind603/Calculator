@@ -222,7 +222,7 @@ export function resolveShot(input: ShotInput, ctx: ShotContext): ShotResult {
 
   if (loft) {
     const yorker = at.y < 0.2 && delivery.pitch.z < BAT_Z + 1.2;
-    res.speed = (24 + 15.5 * power) * tf * sf * paceHelp * (yorker ? 0.72 : 1) * rng.range(0.96, 1.03);
+    res.speed = (23.2 + 15 * power) * tf * sf * paceHelp * (yorker ? 0.72 : 1) * rng.range(0.96, 1.03);
     if (tIdx <= 1) res.elev = rng.range(0.44, 0.6);
     else if (tIdx === 2) res.elev = rng.chance(0.5) ? rng.range(0.3, 0.75) : rng.range(0.75, 1.05);
     else res.elev = rng.range(0.8, 1.2);

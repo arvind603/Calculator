@@ -531,6 +531,7 @@ export class Game {
         if (this.stateT >= this.wait) {
           if (this.wantReplay && this.world.startReplay()) {
             this.ui.hideToast();
+            this.ui.setPanel('none');
             this.ui.replay(true);
             this.setState('replay');
           } else this.afterResult();
@@ -552,8 +553,12 @@ export class Game {
       case 'release': {
         const b = sim.ctx.bowler;
         this.ui.speed(sim.ctx.spec.speedKmh, this.userBats ? b.short : VARIATION_LABEL[sim.ctx.spec.variation]);
+        if (!this.userBats) this.ui.setPanel('none');
         break;
       }
+      case 'swing':
+        this.ui.setHint('');
+        break;
       case 'bounce':
         s.bounce();
         break;

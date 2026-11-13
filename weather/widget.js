@@ -16,8 +16,12 @@ const fm = FileManager.local(), cache = fm.joinPath(fm.cacheDirectory(), 'skies.
 async function place() {
   const p = (args.widgetParameter || '').split(',');
   if (p.length >= 2 && !isNaN(+p[0])) return { lat: +p[0], lon: +p[1], name: (p[2] || '').trim() };
-  Location.setAccuracyToThreeKilometers();
-  const l = await Location.current();
+  let l;
+  try { Location.setAccuracyToThreeKilometers(); l = await Location.current() }
+  catch (e) { // The widget cannot always get the location. Use the last known place.
+    if (fm.fileExists(cache)) return JSON.parse(fm.readString(cache)).loc;
+    throw new Error('Location is not available. Open Scriptable and run Skies one time.');
+  }
   let name = '';
   try { name = (await Location.reverseGeocode(l.latitude, l.longitude))[0].locality || '' } catch (e) {}
   return { lat: +l.latitude.toFixed(3), lon: +l.longitude.toFixed(3), name };
@@ -144,7 +148,7 @@ try {
   if (fam.startsWith('accessory')) { const t = w.addText(deg(o.d.current.temperature_2m)); t.font = Font.heavyRoundedSystemFont(22); w.addText(WMO[o.d.current.weather_code] || '').font = Font.systemFont(10) }
   else w.backgroundImage = draw(o);
 } catch (e) {
-  w.backgroundColor = new Color('#0b1030'); const t = w.addText('No weather data. Check the connection and the location permission.'); t.textColor = Color.white(); t.font = Font.systemFont(12);
+  w.backgroundColor = new Color('#0b1030'); const t = w.addText('Skies: ' + e.message); t.textColor = Color.white(); t.font = Font.systemFont(12);
 }
 if (APP_URL) w.url = APP_URL;
 w.refreshAfterDate = new Date(Date.now() + 15 * 60000);

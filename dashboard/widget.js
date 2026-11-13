@@ -66,7 +66,12 @@ const toggleFocus = () => {
   else db.focusStart = Date.now();
   save();
 };
-const setSteps = v => { const n = typeof v === 'number' ? Math.round(v) : parseInt(String(v).replace(/[.,]0+$/, '').replace(/\D/g, ''), 10); if (!isNaN(n)) { rec.steps = n; save() } return n };
+const num = v => typeof v === 'number' ? Math.round(v) : parseInt(String(v).replace(/[.,]0+$/, '').replace(/\D/g, ''), 10);
+const setSteps = v => { // a number, a text, or a list of numbers (the list is added together)
+  const n = Array.isArray(v) ? v.map(num).filter(x => !isNaN(x)).reduce((a, b) => a + b, 0) : num(v);
+  if (!isNaN(n)) { rec.steps = n; rec.stepsAt = Date.now(); save() }
+  return n;
+};
 
 // ---------- drawing tools ----------
 const lerp = (a, b, t) => a + (b - a) * t, clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -159,7 +164,7 @@ function build() {
   const fmtMin = mins >= 60 ? Math.floor(mins / 60) + 'h' + String(mins % 60).padStart(2, '0') : mins + 'm';
   const rings = w.addStack();
   const add = (img, url) => { const i = rings.addImage(img); i.imageSize = new Size(96, 100); i.url = url };
-  add(ringCard((steps || 0) / STEP_GOAL, [52, 211, 153], [34, 211, 238], fmtSteps, 'STEPS', steps == null ? 'tap to set up' : 'of ' + STEP_GOAL / 1000 + 'k'), 'shortcuts://run-shortcut?name=' + encodeURIComponent(STEPS_SHORTCUT));
+  add(ringCard((steps || 0) / STEP_GOAL, [52, 211, 153], [34, 211, 238], fmtSteps, 'STEPS', steps == null ? 'tap to set up' : rec.stepsAt ? 'at ' + (df.dateFormat = 'H:mm', df.string(new Date(rec.stepsAt))) : 'of ' + STEP_GOAL / 1000 + 'k'), 'shortcuts://run-shortcut?name=' + encodeURIComponent(STEPS_SHORTCUT));
   rings.addSpacer();
   add(ringCard(mins / FOCUS_GOAL, [251, 146, 60], [251, 113, 133], fmtMin, db.focusStart ? 'FOCUS ON' : 'FOCUS', rec.sessions + ' done', !!db.focusStart), self + '?focus=1');
   rings.addSpacer();
@@ -204,7 +209,8 @@ async function menu() {
 
 // ---------- start ----------
 const q = args.queryParameters || {};
-if (args.shortcutParameter != null) Script.setShortcutOutput(String(setSteps(args.shortcutParameter))); // from the steps shortcut
+const sent = args.shortcutParameter != null ? args.shortcutParameter : args.plainTexts && args.plainTexts.length ? args.plainTexts[0] : null;
+if (sent != null) Script.setShortcutOutput(String(setSteps(sent))); // from the steps shortcut (Parameter or Texts field)
 else if (q.habit) toggleHabit(q.habit);
 else if (q.focus) toggleFocus();
 else if (config.runsInApp) await menu();

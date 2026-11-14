@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Habit Streaks</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@500;600;700&display=swap">
+<style>
+  /* Layout: one column of wide "widget" cards. Each card is a habit:
+     left = tap ring + name, hairline, right = streak numerals + week dots. */
+  :root {
+    --bg: #e6ecf4;
+    --bg-glow: #f6f9fd;
+    --fg: #131926;
+    --muted: #5a6477;
+    --ghost: rgba(19, 25, 38, 0.2);
+    --ghost-hover: rgba(19, 25, 38, 0.06);
+    --shadow: rgba(40, 60, 100, 0.35);
+
+    /* Card inks stay the same in both themes: the cards carry their own color. */
+    --ink: #15110a;
+    --ink-soft: rgba(21, 17, 10, 0.66);
+    --ink-faint: rgba(21, 17, 10, 0.2);
+    --gloss: rgba(255, 255, 255, 0.6);
+
+    --font-display: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
+    --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b0f18; --bg-glow: #18213a; --fg: #eef1f7; --muted: #8f99ad;
+      --ghost: rgba(238, 241, 247, 0.22); --ghost-hover: rgba(238, 241, 247, 0.07);
+      --shadow: rgba(0, 0, 0, 0.7); color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b0f18; --bg-glow: #18213a; --fg: #eef1f7; --muted: #8f99ad;
+    --ghost: rgba(238, 241, 247, 0.22); --ghost-hover: rgba(238, 241, 247, 0.07);
+    --shadow: rgba(0, 0, 0, 0.7); color-scheme: dark;
+  }
+
+  .sun   { --g1: #fade45; --g2: #f7b7a6; }
+  .mint  { --g1: #c3ee8f; --g2: #7fdccf; }
+  .sky   { --g1: #9ad8ff; --g2: #bdb3ff; }
+  .rose  { --g1: #ffb0c4; --g2: #ffcd8a; }
+  .lilac { --g1: #d9b9ff; --g2: #ffb5dc; }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100%;
+    background: radial-gradient(120% 70% at 50% -10%, var(--bg-glow), transparent 70%) var(--bg);
+    background-attachment: fixed;
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 16px;
+    padding-block: 40px 56px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-inline: 6px; }
+  h1 { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 34px; letter-spacing: -0.02em; }
+  .date { color: var(--muted); font-weight: 600; font-size: 14px; }
+
+  #list { display: flex; flex-direction: column; gap: 18px; }
+
+  /* ---------- card ---------- */
+  .card {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 0.92fr) 1.5px minmax(0, 1.08fr);
+    align-items: center;
+    gap: 22px;
+    padding: 30px 28px 26px;
+    border-radius: 38px;
+    color: var(--ink);
+    background:
+      radial-gradient(90% 120% at 0% 0%, var(--gloss), transparent 55%),
+      linear-gradient(100deg, var(--g1), var(--g2));
+    box-shadow:
+      inset 0 1.5px 0 var(--gloss),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+      0 26px 44px -26px var(--shadow);
+    transition: --g1 0.5s, --g2 0.5s;
+  }
+  @property --g1 { syntax: "<color>"; inherits: true; initial-value: #fade45; }
+  @property --g2 { syntax: "<color>"; inherits: true; initial-value: #f7b7a6; }
+
+  .card button { font: inherit; }
+  .card button, .card textarea { color: inherit; }
+  .card :focus-visible { outline: 2.5px solid var(--ink); outline-offset: 3px; }
+
+  .left { display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 0; text-align: center; }
+  .label { display: flex; flex-direction: column; align-items: inherit; gap: 4px; min-width: 0; width: 100%; }
+
+  .ring {
+    position: relative;
+    width: 104px; height: 104px; flex: none;
+    border-radius: 50%;
+    border: 8px solid var(--ink);
+    background: none; padding: 0; cursor: pointer;
+    display: grid; place-items: center;
+    transition: transform 0.25s cubic-bezier(.3, 1.6, .5, 1);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ring:hover { transform: scale(1.04); }
+  .ring:active { transform: scale(0.93); }
+  .ring::before {
+    content: ""; position: absolute; inset: -1px; border-radius: 50%;
+    background: var(--ink);
+    transform: scale(0);
+    transition: transform 0.42s cubic-bezier(.3, 1.35, .5, 1);
+  }
+  .ring svg { position: relative; width: 56%; height: 56%; fill: none; stroke: var(--g1); stroke-width: 5.5; stroke-linecap: round; stroke-linejoin: round; visibility: hidden; transition: visibility 0s 0.2s; }
+  .ring[aria-pressed="true"] svg { visibility: visible; transition: visibility 0s 0.16s; }
+  .ring path { stroke-dasharray: 32; stroke-dashoffset: 32; transition: stroke-dashoffset 0.2s; }
+  .ring[aria-pressed="true"]::before { transform: scale(1); }
+  .ring[aria-pressed="true"] path { stroke-dashoffset: 0; transition: stroke-dashoffset 0.34s 0.16s ease-out; }
+
+  .name {
+    display: block; width: 100%;
+    border: 0; background: none; resize: none; overflow: hidden;
+    padding: 2px 4px; margin: 0;
+    border-radius: 8px;
+    font-family: var(--font-body); font-weight: 700; font-size: 21px; line-height: 1.2;
+    text-align: inherit; letter-spacing: -0.01em;
+  }
+  .name::placeholder { color: var(--ink-soft); opacity: 0.75; }
+  .name:hover { background: rgba(255, 255, 255, 0.22); }
+  .name:focus { background: rgba(255, 255, 255, 0.4); outline: none; }
+
+  .hint { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink-soft); padding-inline: 4px; }
+
+  .rule { align-self: stretch; background: var(--ink-faint); border-radius: 2px; margin-block: 14px; }
+
+  .right { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: center; }
+  .stat { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+  .num {
+    display: inline-grid; overflow: hidden;
+    font-family: var(--font-display); font-weight: 800;
+    font-size: clamp(46px, 11vw, 66px); line-height: 0.95; letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+  }
+  .num > span { grid-area: 1 / 1; }
+  .lab { font-size: 14px; font-weight: 600; color: var(--ink-soft); white-space: nowrap; }
+
+  .week { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 2px; }
+  .clip { display: grid; overflow: hidden; padding-block: 4px; }
+  .days { grid-area: 1 / 1; display: grid; grid-template-columns: repeat(7, 1fr); }
+  .day {
+    border: 0; background: none; padding: 2px 0; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+    border-radius: 10px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .day i {
+    position: relative; display: block;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--ink-faint);
+    transition: transform 0.2s cubic-bezier(.3, 1.6, .5, 1);
+  }
+  .day i::before {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    background: var(--ink); transform: scale(0);
+    transition: transform 0.3s cubic-bezier(.3, 1.4, .5, 1);
+  }
+  .day i::after {
+    content: ""; position: absolute; left: 50%; top: 46%;
+    width: 30%; height: 52%;
+    border: solid var(--g2); border-width: 0 2.5px 2.5px 0; border-radius: 1px;
+    transform: translate(-50%, -50%) rotate(42deg) scale(0);
+    transition: transform 0.25s 0.05s cubic-bezier(.3, 1.6, .5, 1);
+  }
+  .day.on i::before { transform: scale(1); }
+  .day.on i::after { transform: translate(-50%, -50%) rotate(42deg) scale(1); }
+  .day:not(:disabled):hover i { transform: scale(1.14); }
+  .day:not(:disabled):active i { transform: scale(0.88); }
+  .day.today i { box-shadow: 0 0 0 2.5px var(--g2), 0 0 0 4.5px var(--ink); }
+  .day b { font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+  .day.today b { color: var(--ink); }
+  .day:disabled { cursor: default; }
+  .day:disabled i { background: none; box-shadow: inset 0 0 0 1.5px var(--ink-faint); }
+  .day:disabled b { opacity: 0.55; }
+
+  .nav {
+    width: 26px; height: 30px; border: 0; background: none; padding: 0; cursor: pointer;
+    border-radius: 9px; font-size: 20px; font-weight: 700; line-height: 1; color: var(--ink-soft);
+  }
+  .nav:hover:not(:disabled) { background: rgba(255, 255, 255, 0.35); color: var(--ink); }
+  .nav:disabled { opacity: 0.25; cursor: default; }
+  .range { margin: -6px 0 0; text-align: center; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+
+  .tools { position: absolute; top: 12px; right: 14px; display: flex; gap: 6px; align-items: center; }
+  .tool {
+    height: 26px; min-width: 26px; padding: 0 7px; border: 0; cursor: pointer;
+    border-radius: 13px; background: rgba(255, 255, 255, 0.32);
+    font-size: 12px; font-weight: 700; line-height: 1; color: var(--ink-soft);
+    opacity: 0.55; transition: opacity 0.2s, background 0.2s;
+  }
+  .card:hover .tool, .tool:focus-visible, .tool.confirm { opacity: 1; }
+  .tool:hover { background: rgba(255, 255, 255, 0.6); color: var(--ink); }
+  .tool.confirm { background: var(--ink); color: var(--g1); }
+  .hue::before { content: ""; display: block; width: 12px; height: 12px; border-radius: 50%; background: linear-gradient(135deg, var(--ink) 50%, rgba(255, 255, 255, 0.85) 50%); }
+
+  /* ---------- add ---------- */
+  #add {
+    font: inherit; font-weight: 700; font-size: 16px; color: var(--muted);
+    min-height: 76px; border-radius: 38px; cursor: pointer;
+    border: 2px dashed var(--ghost); background: none;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    transition: background 0.2s, color 0.2s, transform 0.15s;
+  }
+  #add:hover { background: var(--ghost-hover); color: var(--fg); }
+  #add:active { transform: scale(0.985); }
+  #add:focus-visible { outline: 2.5px solid var(--fg); outline-offset: 3px; }
+  #add span { font-family: var(--font-display); font-size: 24px; line-height: 1; }
+  .note { margin: 0; text-align: center; font-size: 13px; color: var(--muted); }
+
+  /* ---------- phone: stack the two halves ---------- */
+  @media (max-width: 540px) {
+    .card { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 26px 20px 20px; border-radius: 32px; }
+    .left { flex-direction: row; text-align: left; align-items: center; gap: 16px; padding-right: 56px; }
+    .label { align-items: flex-start; }
+    .ring { width: 76px; height: 76px; border-width: 7px; }
+    .rule { height: 1.5px; margin: 0; }
+    .day i { width: 30px; height: 30px; }
+    .day b { font-size: 13px; }
+    .nav { height: 38px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0.01ms !important; transition-delay: 0s !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Habits</h1>
+    <span class="date" id="date"></span>
+  </header>
+  <main id="list"></main>
+  <button id="add" type="button"><span>+</span> New habit</button>
+  <p class="note">Your habits are saved in this browser.</p>
+</div>
+
+<script>
+(() => {
+  const KEY = 'habit-streaks-v1';
+  const PALETTE = ['sun', 'mint', 'sky', 'rose', 'lilac'];
+  const LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const EASE = 'cubic-bezier(.3,.9,.3,1)';
+
+  // ----- dates (local calendar days) -----
+  const pad = n => String(n).padStart(2, '0');
+  const keyOf = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  const today = () => addDays(new Date(), 0);
+  const dayNum = k => { const [y, m, d] = k.split('-').map(Number); return Date.UTC(y, m - 1, d) / 864e5; };
+
+  function streaks(done) {
+    const days = Object.keys(done).map(dayNum).sort((a, b) => a - b);
+    let best = 0, run = 0, prev = null;
+    for (const n of days) { run = n === prev + 1 ? run + 1 : 1; if (run > best) best = run; prev = n; }
+    const set = new Set(days);
+    let t = dayNum(keyOf(today()));
+    if (!set.has(t)) t--;               // today not marked yet: the streak is still alive
+    let cur = 0;
+    while (set.has(t)) { cur++; t--; }
+    return { cur, best };
+  }
+
+  // ----- storage -----
+  let habits;
+  try { habits = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+  if (!Array.isArray(habits)) habits = [{ id: 'h1', name: 'Io parlo italiano', color: 'sun', done: {} }];
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(habits)); } catch (e) {} };
+
+  // ----- motion helpers: old value slides out while the new one slides in -----
+  function swap(oldEl, newEl, axis, dir, ms) {
+    if (reduce) { oldEl.remove(); return; }
+    const t = v => `translate${axis}(${v}%)`;
+    const opts = { duration: ms, easing: EASE };
+    newEl.animate([{ transform: t(100 * dir) }, { transform: t(0) }], opts);
+    oldEl.animate([{ transform: t(0) }, { transform: t(-100 * dir) }], opts).onfinish = () => oldEl.remove();
+  }
+  function roll(el, val) {
+    const old = el.dataset.v;
+    if (old === String(val)) return;
+    el.dataset.v = val;
+    const next = document.createElement('span');
+    next.textContent = val;
+    const prev = el.lastElementChild;
+    el.replaceChildren(...(prev ? [prev] : []), next);
+    if (prev) swap(prev, next, 'Y', +val > +old ? 1 : -1, 420);
+  }
+
+  // ----- card -----
+  const list = document.getElementById('list');
+
+  function buildCard(h) {
+    const card = document.createElement('article');
+    card.className = 'card ' + h.color;
+    card.innerHTML = `
+      <div class="tools">
+        <button class="tool hue" type="button" aria-label="Change color"></button>
+        <button class="tool del" type="button" aria-label="Remove habit">✕</button>
+      </div>
+      <div class="left">
+        <button class="ring" type="button" aria-pressed="false">
+          <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M13 25l8 8 14-17"/></svg>
+        </button>
+        <div class="label">
+          <textarea class="name" rows="1" maxlength="60" placeholder="Name your habit" aria-label="Habit name" id="name-${h.id}"></textarea>
+          <p class="hint"></p>
+        </div>
+      </div>
+      <div class="rule"></div>
+      <div class="right">
+        <div class="stats">
+          <div class="stat"><span class="num cur"></span><span class="lab">Day Streak</span></div>
+          <div class="stat"><span class="num best"></span><span class="lab">Best Streak</span></div>
+        </div>
+        <div class="week">
+          <button class="nav prev" type="button" aria-label="Previous week">‹</button>
+          <div class="clip"></div>
+          <button class="nav next" type="button" aria-label="Next week">›</button>
+        </div>
+        <p class="range"></p>
+      </div>`;
+    const $ = s => card.querySelector(s);
+    const name = $('.name'), ring = $('.ring'), clip = $('.clip'), del = $('.del');
+    let offset = 0; // weeks back from the current week
+
+    const fit = () => { name.style.height = 'auto'; name.style.height = name.scrollHeight + 'px'; };
+    name.value = h.name;
+    name.addEventListener('input', () => { h.name = name.value.replace(/\n/g, ' '); save(); fit(); refresh(); });
+    name.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); name.blur(); } });
+
+    function weekStart() { const t = today(); return addDays(t, -t.getDay() - 7 * offset); }
+
+    function buildRow() {
+      const row = document.createElement('div');
+      row.className = 'days';
+      const start = weekStart(), tKey = keyOf(today());
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(start, i), k = keyOf(d);
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'day'; b.dataset.key = k;
+        b.innerHTML = `<i></i><b>${LETTERS[i]}</b>`;
+        if (k === tKey) b.classList.add('today');
+        if (k > tKey) b.disabled = true;
+        b.dataset.label = d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+        row.append(b);
+      }
+      return row;
+    }
+
+    function refresh() {
+      const tKey = keyOf(today());
+      const doneToday = !!h.done[tKey];
+      ring.setAttribute('aria-pressed', doneToday);
+      ring.setAttribute('aria-label', `${h.name || 'Habit'}: ${doneToday ? 'done today, tap to undo' : 'mark today done'}`);
+      $('.hint').textContent = doneToday ? 'Done today' : 'Tap to mark done';
+      const s = streaks(h.done);
+      roll($('.cur'), s.cur);
+      roll($('.best'), s.best);
+      for (const b of clip.querySelectorAll('.days:last-child .day')) {
+        const on = !!h.done[b.dataset.key];
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on);
+        b.setAttribute('aria-label', `${b.dataset.label}: ${on ? 'done' : 'not done'}`);
+      }
+      const start = weekStart(), end = addDays(start, 6);
+      const f = d => d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+      $('.range').textContent = offset === 0 ? 'This week' : offset === 1 ? 'Last week' : `${f(start)} – ${f(end)}`;
+      $('.next').disabled = offset === 0;
+    }
+
+    function showWeek(dir) {
+      const old = clip.lastElementChild;
+      for (const stale of clip.querySelectorAll('.days')) if (stale !== old) stale.remove();
+      const row = buildRow();
+      clip.append(row);
+      refresh();
+      if (old && dir) swap(old, row, 'X', dir, 380); else if (old) old.remove();
+    }
+
+    function toggle(k) {
+      if (h.done[k]) delete h.done[k]; else h.done[k] = 1;
+      save(); refresh();
+    }
+
+    ring.addEventListener('click', () => toggle(keyOf(today())));
+    clip.addEventListener('click', e => {
+      const b = e.target.closest('.day');
+      if (b && !b.disabled) toggle(b.dataset.key);
+    });
+    $('.prev').addEventListener('click', () => { offset++; showWeek(-1); });
+    $('.next').addEventListener('click', () => { if (offset > 0) { offset--; showWeek(1); } });
+
+    $('.hue').addEventListener('click', () => {
+      card.classList.remove(h.color);
+      h.color = PALETTE[(PALETTE.indexOf(h.color) + 1) % PALETTE.length];
+      card.classList.add(h.color);
+      save();
+    });
+
+    const disarm = () => { del.classList.remove('confirm'); del.textContent = '✕'; };
+    del.addEventListener('click', () => {
+      if (!del.classList.contains('confirm')) { del.classList.add('confirm'); del.textContent = 'Remove?'; return; }
+      habits = habits.filter(x => x !== h); save();
+      cards.delete(card);
+      if (reduce) { card.remove(); return; }
+      const hgt = card.offsetHeight;
+      card.style.overflow = 'hidden';
+      card.animate(
+        [{ height: hgt + 'px', transform: 'scale(1)', opacity: 1 },
+         { height: '0px', paddingTop: 0, paddingBottom: 0, marginBottom: '-18px', transform: 'scale(.92)', opacity: 0 }],
+        { duration: 360, easing: EASE }
+      ).onfinish = () => card.remove();
+    });
+    del.addEventListener('blur', disarm);
+
+    list.append(card);
+    showWeek(0);
+    fit();
+    cards.set(card, { fit, reset: () => showWeek(0), name });
+    return card;
+  }
+
+  const cards = new Map();
+  habits.forEach(buildCard);
+
+  // ----- add -----
+  document.getElementById('add').addEventListener('click', () => {
+    const used = habits.map(x => x.color);
+    const color = PALETTE.find(c => !used.includes(c)) || PALETTE[habits.length % PALETTE.length];
+    const h = { id: 'h' + Date.now().toString(36), name: '', color, done: {} };
+    habits.push(h); save();
+    const card = buildCard(h);
+    if (!reduce) {
+      const hgt = card.offsetHeight;
+      card.animate(
+        [{ height: '0px', paddingTop: 0, paddingBottom: 0, marginBottom: '-18px', transform: 'scale(.92)', overflow: 'hidden' },
+         { height: hgt + 'px', transform: 'scale(1)', overflow: 'hidden' }],
+        { duration: 420, easing: EASE }
+      );
+    }
+    cards.get(card).name.focus({ preventScroll: true });
+    card.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  });
+
+  // ----- page chrome, day rollover, text fitting -----
+  const dateEl = document.getElementById('date');
+  let shownDay = '';
+  function tick() {
+    const k = keyOf(today());
+    if (k === shownDay) return;
+    shownDay = k;
+    dateEl.textContent = today().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+    cards.forEach(c => c.reset());
+  }
+  tick();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+  setInterval(tick, 60000);
+  const fitAll = () => cards.forEach(c => c.fit());
+  addEventListener('resize', fitAll);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitAll);
+})();
+</script>
+</body>
+</html>

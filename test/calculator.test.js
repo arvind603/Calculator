@@ -83,8 +83,8 @@ test('digits after percent start a new number', () => {
 });
 
 test('percent keeps the pending operation', () => {
-  assert.equal(run('200+10%=').display, '200.1');
-  assert.equal(run('200+10%+').display, '200.1');
+  assert.equal(run('200*10%=').display, '20');
+  assert.equal(run('200/10%+').display, '2000');
 });
 
 test('division by zero gives an error that only clear removes', () => {
@@ -140,4 +140,44 @@ test('sign after an operator makes the second operand', () => {
 
 test('negative zero accepts digits correctly', () => {
   assert.equal(run('0.5sbb5').display, '-5');
+});
+
+test('percent with + or − is a part of the first operand', () => {
+  assert.equal(run('200+10%').display, '20');
+  assert.equal(run('200+10%=').display, '220');
+  assert.equal(run('200-10%=').display, '180');
+  assert.equal(run('50+%=').display, '75');
+});
+
+test('equals again repeats the last operation', () => {
+  const calc = run('2+3==');
+  assert.equal(calc.display, '8');
+  assert.equal(calc.expression, '5 + 3 =');
+  assert.equal(run('2*3===').display, '54');
+  assert.equal(run('2+3=7=').display, '10');
+});
+
+test('equals with no operation does nothing, and clear stops the repeat', () => {
+  assert.equal(run('5=').display, '5');
+  assert.equal(run('2+3=c4=').display, '4');
+});
+
+test('equals returns an entry for the history', () => {
+  const calc = run('2+3');
+  assert.deepEqual(calc.equals(), { expression: '2 + 3 =', result: '5' });
+  assert.equal(run('5/0').equals(), null);
+  assert.equal(run('5').equals(), null);
+});
+
+test('recall puts an earlier result in the display', () => {
+  const calc = run('4*');
+  calc.recall('5');
+  assert.equal(calc.display, '5');
+  calc.equals();
+  assert.equal(calc.display, '20');
+  calc.recall('abc');
+  assert.equal(calc.display, '20');
+  calc.recall('7');
+  calc.inputDigit('1');
+  assert.equal(calc.display, '1');
 });

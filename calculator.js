@@ -29,6 +29,8 @@
     // overwrite: the next digit replaces the display.
     // awaitingOperand: an operator was the last input, so there is no second operand yet.
     let overwrite, awaitingOperand;
+    // repeat: the last operator and second operand, used when equals is pressed again.
+    let repeat;
 
     function clear() {
       current = '0';
@@ -39,6 +41,7 @@
       error = false;
       overwrite = false;
       awaitingOperand = false;
+      repeat = null;
     }
 
     function fail() {
@@ -48,6 +51,7 @@
       operator = null;
       overwrite = true;
       awaitingOperand = false;
+      repeat = null;
     }
 
     function startEntry(text) {
@@ -92,19 +96,32 @@
       awaitingOperand = true;
     }
 
+    // Returns { expression, result } for the history, or null if there is no result.
     function equals() {
-      if (error || operator === null) return;
-      const res = compute(previous, parseFloat(current), operator);
-      expression = previousStr + ' ' + operator + ' ' + tidy(current) + ' =';
+      if (error) return null;
+      let a, aStr, op, b, bStr;
+      if (operator !== null) {
+        a = previous; aStr = previousStr; op = operator;
+        b = parseFloat(current); bStr = tidy(current);
+      } else if (repeat) {
+        a = parseFloat(current); aStr = tidy(current);
+        ({ op, b, bStr } = repeat);
+      } else {
+        return null;
+      }
+      const res = compute(a, b, op);
+      expression = aStr + ' ' + op + ' ' + bStr + ' =';
       if (!Number.isFinite(res)) {
         fail();
-        return;
+        return null;
       }
       current = format(res);
       previous = null;
       operator = null;
       overwrite = true;
       awaitingOperand = false;
+      repeat = { op, b, bStr };
+      return { expression, result: current };
     }
 
     function toggleSign() {
@@ -115,7 +132,10 @@
 
     function percent() {
       if (error) return;
-      current = format(parseFloat(current) / 100);
+      let value = parseFloat(current) / 100;
+      // With + or −, percent is a part of the first operand: 200 + 10 % = 220.
+      if (previous !== null && (operator === '+' || operator === '−')) value *= previous;
+      current = format(value);
       overwrite = true;
       awaitingOperand = false;
     }
@@ -126,10 +146,17 @@
       if (current === '' || current === '-') current = '0';
     }
 
+    // Put an earlier result in the display, as if it was typed.
+    function recall(value) {
+      if (error || !Number.isFinite(parseFloat(value))) return;
+      startEntry(format(parseFloat(value)));
+      overwrite = true;
+    }
+
     clear();
 
     return {
-      inputDigit, inputDecimal, inputOperator, equals, clear, toggleSign, percent, backspace,
+      inputDigit, inputDecimal, inputOperator, equals, clear, toggleSign, percent, backspace, recall,
       get display() { return current; },
       get expression() { return expression; },
       get error() { return error; },

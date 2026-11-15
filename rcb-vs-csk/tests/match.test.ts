@@ -427,3 +427,28 @@ describe('squads', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 });
+
+describe('super over', () => {
+  it('uses one over and ends the innings after two wickets', () => {
+    const m = new Match({ ...config(2), overs: 1, maxWickets: 2 });
+    m.setBowler(m.eligibleBowlers()[0].id);
+    expect(m.phase()).toBe('powerplay');
+    m.applyBall({ runsBat: 0, wicket: { kind: 'bowled', batterId: m.current.strikerId! } });
+    expect(m.current.complete).toBe(false);
+    const s = m.applyBall({ runsBat: 0, wicket: { kind: 'bowled', batterId: m.current.strikerId! } });
+    expect(s.inningsComplete).toBe(true);
+    m.startSecondInnings();
+    m.setBowler(m.eligibleBowlers()[0].id);
+    m.applyBall(run(1));
+    expect(m.complete).toBe(true);
+    expect(m.result()!.text).toContain('2 wickets');
+  });
+
+  it('ends a one-over innings after six balls', () => {
+    const m = new Match({ ...config(2), overs: 1, maxWickets: 2 });
+    m.setBowler(m.eligibleBowlers()[0].id);
+    for (let i = 0; i < 6; i++) m.applyBall(run(1));
+    expect(m.current.complete).toBe(true);
+    expect(m.current.score).toBe(6);
+  });
+});

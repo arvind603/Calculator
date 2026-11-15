@@ -40,6 +40,7 @@ export interface FieldSpot {
 // Angle 0 = straight down the ground. Negative = off side. +/-180 = directly behind.
 const SPOTS: Record<string, [number, number]> = {
   slip: [-166, 12],
+  gully: [-128, 13],
   'short third': [-140, 26],
   'deep third': [-150, 52],
   'backward point': [-100, 25],
@@ -60,15 +61,31 @@ const SPOTS: Record<string, [number, number]> = {
   'fine leg': [150, 52],
 };
 
-type FieldKey = `${Phase}-${BowlKind}`;
+export type FieldPlan = 'attack' | 'balanced' | 'defend';
+export const FIELD_PLANS: FieldPlan[] = ['attack', 'balanced', 'defend'];
 
+type FieldKey = `${FieldPlan}-${Phase}-${BowlKind}`;
+
+// Each list has 9 fielders. All lists obey the powerplay and leg-side limits (see the unit tests).
 const FIELDS: Record<FieldKey, string[]> = {
-  'powerplay-pace': ['slip', 'point', 'cover', 'mid-off', 'mid-on', 'mid-wicket', 'square leg', 'deep third', 'fine leg'],
-  'powerplay-spin': ['slip', 'point', 'cover', 'mid-off', 'mid-on', 'mid-wicket', 'short fine leg', 'long-on', 'deep mid-wicket'],
-  'middle-pace': ['short third', 'cover', 'mid-off', 'mid-wicket', 'deep point', 'long-on', 'deep mid-wicket', 'deep square leg', 'fine leg'],
-  'middle-spin': ['point', 'cover', 'mid-wicket', 'short fine leg', 'long-off', 'long-on', 'deep mid-wicket', 'deep square leg', 'deep cover'],
-  'death-pace': ['short third', 'point', 'extra cover', 'short fine leg', 'long-off', 'long-on', 'deep mid-wicket', 'deep square leg', 'deep cover'],
-  'death-spin': ['short third', 'cover', 'mid-wicket', 'short fine leg', 'long-off', 'long-on', 'deep mid-wicket', 'deep square leg', 'deep point'],
+  'attack-powerplay-pace': ['slip', 'gully', 'point', 'cover', 'mid-off', 'mid-on', 'mid-wicket', 'deep third', 'fine leg'],
+  'balanced-powerplay-pace': ['slip', 'point', 'cover', 'mid-off', 'mid-on', 'mid-wicket', 'square leg', 'deep third', 'fine leg'],
+  'defend-powerplay-pace': ['short third', 'point', 'extra cover', 'mid-off', 'mid-on', 'mid-wicket', 'short fine leg', 'deep cover', 'deep square leg'],
+  'attack-powerplay-spin': ['slip', 'point', 'cover', 'mid-off', 'mid-on', 'mid-wicket', 'short fine leg', 'square leg', 'long-on'],
+  'balanced-powerplay-spin': ['slip', 'point', 'cover', 'mid-off', 'mid-on', 'mid-wicket', 'short fine leg', 'long-on', 'deep mid-wicket'],
+  'defend-powerplay-spin': ['short third', 'point', 'cover', 'mid-off', 'mid-on', 'mid-wicket', 'short fine leg', 'long-on', 'deep mid-wicket'],
+  'attack-middle-pace': ['slip', 'point', 'cover', 'mid-off', 'mid-on', 'mid-wicket', 'deep point', 'deep square leg', 'fine leg'],
+  'balanced-middle-pace': ['short third', 'cover', 'mid-off', 'mid-wicket', 'deep point', 'long-on', 'deep mid-wicket', 'deep square leg', 'fine leg'],
+  'defend-middle-pace': ['short third', 'point', 'extra cover', 'short fine leg', 'long-off', 'long-on', 'deep mid-wicket', 'deep square leg', 'deep cover'],
+  'attack-middle-spin': ['slip', 'point', 'cover', 'mid-off', 'mid-wicket', 'short fine leg', 'long-on', 'deep mid-wicket', 'deep cover'],
+  'balanced-middle-spin': ['point', 'cover', 'mid-wicket', 'short fine leg', 'long-off', 'long-on', 'deep mid-wicket', 'deep square leg', 'deep cover'],
+  'defend-middle-spin': ['short third', 'cover', 'mid-wicket', 'short fine leg', 'long-off', 'long-on', 'deep mid-wicket', 'deep square leg', 'deep point'],
+  'attack-death-pace': ['short third', 'cover', 'mid-off', 'mid-wicket', 'deep point', 'long-on', 'deep mid-wicket', 'deep square leg', 'fine leg'],
+  'balanced-death-pace': ['short third', 'point', 'extra cover', 'short fine leg', 'long-off', 'long-on', 'deep mid-wicket', 'deep square leg', 'deep cover'],
+  'defend-death-pace': ['short third', 'cover', 'mid-wicket', 'short fine leg', 'long-off', 'long-on', 'deep mid-wicket', 'deep square leg', 'deep point'],
+  'attack-death-spin': ['point', 'cover', 'mid-wicket', 'short fine leg', 'long-off', 'long-on', 'deep mid-wicket', 'deep square leg', 'deep cover'],
+  'balanced-death-spin': ['short third', 'cover', 'mid-wicket', 'short fine leg', 'long-off', 'long-on', 'deep mid-wicket', 'deep square leg', 'deep point'],
+  'defend-death-spin': ['short third', 'extra cover', 'mid-wicket', 'short fine leg', 'long-off', 'long-on', 'deep mid-wicket', 'deep square leg', 'deep cover'],
 };
 
 export function spotPosition(name: string, hand: Hand): FieldSpot {
@@ -79,8 +96,8 @@ export function spotPosition(name: string, hand: Hand): FieldSpot {
 }
 
 /** The 9 outfield positions for the phase, bowler type and batter hand. */
-export function getField(phase: Phase, kind: BowlKind, hand: Hand): FieldSpot[] {
-  return FIELDS[`${phase}-${kind}`].map((n) => spotPosition(n, hand));
+export function getField(phase: Phase, kind: BowlKind, hand: Hand, plan: FieldPlan = 'balanced'): FieldSpot[] {
+  return FIELDS[`${plan}-${phase}-${kind}`].map((n) => spotPosition(n, hand));
 }
 
 export function keeperSpot(kind: BowlKind): FieldSpot {

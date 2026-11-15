@@ -81,7 +81,7 @@ button { font: inherit; color: inherit; border: 0; cursor: pointer; touch-action
 .timing .ends { display: flex; justify-content: space-between; font-size: 9px; font-weight: 800; letter-spacing: 0.08em; color: #dfe3ec; text-shadow: 0 1px 3px #000; margin-bottom: 2px; }
 .timing .word { font-size: 13px; font-weight: 800; margin-top: 7px; text-shadow: 0 1px 4px #000; }
 
-.speed { position: absolute; right: calc(8px + var(--sar)); top: calc(118px + var(--sat)); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 5px 9px; font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; opacity: 0; transition: opacity 0.2s; text-align: right; }
+.speed { position: absolute; right: calc(8px + var(--sar)); top: calc(166px + var(--sat)); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 5px 9px; font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; opacity: 0; transition: opacity 0.2s; text-align: right; }
 .speed.show { opacity: 1; }
 .speed small { display: block; font-size: 9px; color: var(--dim); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 
@@ -208,3 +208,15 @@ table.sc tr.tot td { font-weight: 800; border-bottom: 0; padding-top: 7px; font-
   .sb { font-size: 13px; max-width: 470px; }
   .labels .lab { font-size: 12px; }
 }
+
+/* ---------- Field map, milestones, records ---------- */
+.radar { position: absolute; right: calc(6px + var(--sar)); top: calc(54px + var(--sat)); width: 104px; height: 104px; opacity: 0.94; }
+.mile { position: absolute; left: 50%; top: calc(150px + var(--sat)); transform: translateX(-50%) scale(0.85); opacity: 0; transition: opacity 0.2s, transform 0.25s cubic-bezier(0.2, 1.4, 0.4, 1);
+  background: linear-gradient(180deg, #f1cf5e, #d4af37); color: #1b1400; font-weight: 900; font-size: 14px; letter-spacing: 0.04em; padding: 6px 16px; border-radius: 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
+.mile.show { opacity: 1; transform: translateX(-50%) scale(1); }
+.sb .tag.so { background: var(--rcb2); color: #1b1400; }
+.seg.small button { min-height: 36px; font-size: 11px; }
+.record { font-size: 13px; line-height: 1.55; color: #dfe3ec; font-variant-numeric: tabular-nums; }
+.record b { color: #fff; }
+@media (max-height: 520px) { .radar { width: 84px; height: 84px; } .speed { top: calc(144px + var(--sat)); } }
+@media (min-width: 900px) { .radar { width: 132px; height: 132px; } .speed { top: calc(194px + var(--sat)); } }

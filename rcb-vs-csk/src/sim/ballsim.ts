@@ -9,6 +9,7 @@ import {
   STRIKER_STUMPS_Z,
   getField,
   keeperSpot,
+  type FieldPlan,
 } from './field';
 import { pathAt, planFielding, simulatePath, throwTime, type BallPath, type Fielder, type FieldingPlan } from './fielding';
 import type { Rng } from './rng';
@@ -89,9 +90,10 @@ export function buildFielders(
   striker: Player,
   phase: Phase,
   difficulty: Difficulty,
+  plan: FieldPlan = 'balanced',
 ): Fielder[] {
   const kind = bowler.bowl!.kind;
-  const spots = getField(phase, kind, striker.hand);
+  const spots = getField(phase, kind, striker.hand, plan);
   const others = team.xi.filter((pl) => pl.id !== bowler.id && pl.id !== team.keeperId);
   const out: Fielder[] = spots.map((s, i) => {
     const deep = Math.hypot(s.x, s.z) > 40;

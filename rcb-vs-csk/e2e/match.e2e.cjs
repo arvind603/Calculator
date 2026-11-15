@@ -82,6 +82,7 @@ function fail(msg) {
     const start = Date.now();
     let bowled = 0;
     let sawBreak = false;
+    let planChanges = 0;
     for (;;) {
       if (Date.now() - start > 9 * 60 * 1000) throw new Error('Timeout: the match did not finish');
       const i = await page.evaluate(() => window.__game.info());
@@ -94,6 +95,13 @@ function fail(msg) {
       } else if (i.state === 'bowlAim') {
         // Change the variation on some balls, tap the pitch, then start the meter.
         if (bowled % 3 === 1) await page.click('[data-var]:nth-child(2)');
+        if (bowled % 4 === 2) {
+          // Change the field setting. The simulation must use the new field.
+          await page.click('[data-plan="attack"]');
+          const plan = await page.evaluate(() => window.__game.info().fieldPlan);
+          if (plan !== 'attack') fail('field plan did not change');
+          planChanges++;
+        }
         const b = i.batter;
         await page.mouse.click(b.x + ((bowled % 3) - 1) * 6, b.y + 70 + (bowled % 4) * 22);
         await page.click('[data-act="bowl"]');
@@ -143,6 +151,61 @@ function fail(msg) {
     console.log(`Result: ${final.result}`);
     if (errors.length) fail('console errors:\n  ' + errors.join('\n  '));
     else console.log('Console errors: none');
+    if (!(await page.evaluate(() => !document.querySelector('[data-q="radar"]').classList.contains('hidden') || window.__game.info().state === 'end'))) fail('field map state is wrong');
+    console.log(`Field plan changes: ${planChanges}`);
+
+    // ---- Second scenario: a tie goes to a super over (the tie is forced by a test hook). ----
+    await page.goto(server.url + '?test=1&tie=1');
+    await page.waitForFunction(() => window.__game && window.__game.info().state === 'menu');
+    await page.click('[data-opt="overs:2"]');
+    await page.click('[data-opt="first:bowl"]');
+    await page.click('[data-act="start"]');
+    await page.evaluate(() => {
+      const g = window.__game;
+      g.timeScale = 8;
+      let n = 0;
+      g.onStep = () => {
+        const i = g.info();
+        if (!i.userBats) return;
+        if (i.canSwing && i.inZone) g.sim.swing('ground', (n++ % 5) * 0.6 - 1.2);
+        if (i.canRun && i.runHint === 'safe') g.sim.callRun();
+      };
+    });
+    let sawTie = false;
+    let soBalls = 0;
+    const t0 = Date.now();
+    for (;;) {
+      if (Date.now() - t0 > 8 * 60 * 1000) throw new Error('Timeout: the super over did not finish');
+      const i = await page.evaluate(() => window.__game.info());
+      if (i.state === 'end') break;
+      if (i.state === 'tie') {
+        sawTie = true;
+        await page.click('[data-act="superover"]');
+      } else if (i.state === 'break') await page.click('[data-act="next"]');
+      else if (i.state === 'pickBowler') await page.click('[data-bowler]:not([disabled])');
+      else if (i.state === 'bowlAim' || i.state === 'bowlMeter') {
+        await page.click('[data-act="bowl"]');
+        if (i.superOver) soBalls++;
+      } else await page.waitForTimeout(100);
+    }
+    const so = await page.evaluate(() => ({ info: window.__game.info(), text: document.querySelector('.result-line')?.textContent ?? '', sub: document.querySelector('.screen p.sub')?.textContent ?? '' }));
+    if (!sawTie) fail('tie screen did not show');
+    if (so.info.superOver !== 1) fail('super over was not played');
+    if (!/won the super over/.test(so.text)) fail(`super over result text is wrong: "${so.text}"`);
+    if (!/Super over:/.test(so.sub)) fail('super over scores are not on the result screen');
+    if (so.info.legalBalls > 6 || so.info.wickets > 2) fail(`super over limits are wrong (${so.info.legalBalls} balls, ${so.info.wickets} wickets)`);
+    console.log(`Super over: ${so.text} | ${so.sub.split('Super over:')[1]?.trim()}`);
+    // Records are saved and shown on the menu.
+    await page.click('[data-act="quit"]');
+    const record = await page.evaluate(() => document.querySelector('.record')?.textContent ?? '');
+    if (!/Played\s*2/.test(record)) fail(`record is not on the menu: "${record}"`);
+    await page.reload();
+    await page.waitForFunction(() => window.__game && window.__game.info().state === 'menu');
+    const kept = await page.evaluate(() => ({ rec: document.querySelector('.record')?.textContent ?? '', overs: document.querySelector('[data-opt="overs:2"]').classList.contains('sel'), bowl: document.querySelector('[data-opt="first:bowl"]').classList.contains('sel') }));
+    if (!/Played\s*2/.test(kept.rec) || !kept.overs || !kept.bowl) fail('settings or records were not kept after a reload');
+    else console.log('Saved settings and records: kept after reload');
+
+    if (errors.length) fail('console errors:\n  ' + errors.join('\n  '));
     if (!process.exitCode) console.log('PASS');
   } catch (e) {
     fail(e.stack || String(e));

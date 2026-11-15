@@ -730,7 +730,7 @@ export class World {
         const b = sim.ball;
         const dist = Math.hypot(b.x, b.z - STRIKER_CREASE_Z);
         const lofted = b.y > 3.5;
-        follow = Math.min(1, Math.max(0, (dist - (lofted ? 6 : 14)) / 16));
+        follow = Math.min(1, Math.max(0, (dist - (lofted ? 6 : 20)) / 18));
         if (follow > this.followBlend) this.followBlend = follow;
         const f = this.followBlend;
         if (f > 0) {

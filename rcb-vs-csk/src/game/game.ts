@@ -2,17 +2,18 @@ import { World } from '../render/world';
 import { VARIATIONS, VARIATION_LABEL, aiChooseBowler, type BowlInput } from '../sim/ai';
 import { BallSim, type BallContext, type BallOutcome, type SimEvent } from '../sim/ballsim';
 import type { DeliverySpec, Variation } from '../sim/delivery';
-import { STRIKER_STUMPS_Z, legSign } from '../sim/field';
+import { STRIKER_CREASE_Z, STRIKER_STUMPS_Z, legSign, type FieldPlan } from '../sim/field';
 import { makeBallContext, nextAiDelivery, nextUserDelivery } from '../sim/flow';
 import { Match, type BallSummary } from '../sim/match';
 import { Rng, clamp } from '../sim/rng';
 import type { ShotType } from '../sim/shot';
-import { defaultXi, makeTeam } from '../sim/squads';
+import { RCB_SQUAD, defaultXi, makeTeam, validateXi } from '../sim/squads';
 import type { Player, TeamId } from '../sim/types';
 import { UI, type StartOptions } from '../ui/ui';
 import { Sfx } from './audio';
+import { loadSaved, saveSaved, type Saved } from './store';
 
-type State = 'menu' | 'pickBowler' | 'prepare' | 'bowlAim' | 'bowlMeter' | 'ball' | 'result' | 'replay' | 'break' | 'end';
+type State = 'menu' | 'tie' | 'pickBowler' | 'prepare' | 'bowlAim' | 'bowlMeter' | 'ball' | 'result' | 'replay' | 'break' | 'end';
 
 const USER: TeamId = 'RCB';
 const METER_CENTRE = 0.48;
@@ -58,15 +59,33 @@ export class Game {
   private fpsN = 0;
   private testMode: boolean;
   private bannerT = 0;
+  private forceTie = false;
+  private saved: Saved = loadSaved();
+  private plan: FieldPlan = 'balanced';
+  /** The tied main match while a super over is played. */
+  private mainMatch: Match | null = null;
+  private superRound = 0;
+  private milestones = new Set<string>();
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.canvas = canvas;
     const q = new URLSearchParams(location.search);
     this.testMode = q.has('test');
+    this.forceTie = this.testMode && q.has('tie');
     this.world = new World(canvas, this.testMode);
     this.ui = new UI(uiRoot, {
       start: (o) => this.startMatch(o),
-      saveXi: (xi) => (this.xi = xi),
+      saveXi: (xi) => {
+        this.xi = xi;
+        this.saved.xi = xi.map((p) => p.id);
+        saveSaved(this.saved);
+      },
+      fieldPlan: (p) => this.setFieldPlan(p),
+      superOver: () => this.startSuperOver(),
+      options: (o) => {
+        Object.assign(this.saved, o);
+        saveSaved(this.saved);
+      },
       shotType: (t) => this.setShotType(t),
       run: () => this.callRun(),
       pause: () => this.setPaused(true),
@@ -75,6 +94,8 @@ export class Game {
       sound: (on) => {
         this.sfx.unlock();
         this.sfx.setEnabled(on);
+        this.saved.sound = on;
+        saveSaved(this.saved);
       },
       pickBowler: (id) => this.pickBowler(id),
       variation: (v) => this.setVariation(v),
@@ -100,8 +121,14 @@ export class Game {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.state !== 'menu' && this.state !== 'end' && this.state !== 'break') this.setPaused(true);
     });
+    // Restore the saved settings.
+    const xi = this.saved.xi.map((id) => RCB_SQUAD.find((p) => p.id === id)).filter((p): p is Player => !!p);
+    if (xi.length === 11 && validateXi(xi).ok) this.xi = xi;
+    this.ui.setOptions({ batFirst: this.saved.batFirst, overs: this.saved.overs, difficulty: this.saved.difficulty });
+    this.sfx.setEnabled(this.saved.sound);
+    this.ui.setSound(this.saved.sound);
     this.world.snapCamera();
-    this.ui.showMenu(this.xi);
+    this.ui.showMenu(this.xi, this.recordHtml());
     requestAnimationFrame((t) => this.frame(t));
   }
 
@@ -113,6 +140,10 @@ export class Game {
     this.match = new Match({ overs: o.overs, difficulty: o.difficulty, battingFirst: o.batFirst ? 'RCB' : 'CSK', teams });
     this.sim = null;
     this.lastOutcome = null;
+    this.mainMatch = null;
+    this.superRound = 0;
+    this.plan = 'balanced';
+    this.milestones.clear();
     this.world.mode = 'live';
     this.ui.showHud(true);
     this.ui.banner(null);
@@ -130,7 +161,8 @@ export class Game {
     this.world.clearPlayers();
     this.world.mode = 'menu';
     this.ui.replay(false);
-    this.ui.showMenu(this.xi);
+    this.ui.radar(false);
+    this.ui.showMenu(this.xi, this.recordHtml());
   }
 
   private get userBats(): boolean {
@@ -181,12 +213,12 @@ export class Game {
       if (!VARIATIONS[kind].includes(this.variation)) this.variation = 'stock';
       const side = legSign(striker.hand);
       this.target = { x: -side * 0.18 - (kind === 'spin' ? (bowler.bowl!.turn ?? 1) * 0.22 : 0), length: kind === 'pace' ? 6.4 : 4.9 };
-      this.ctx = makeBallContext(m, this.placeholderSpec(bowler), this.rng, USER);
+      this.ctx = makeBallContext(m, this.placeholderSpec(bowler), this.rng, USER, this.plan);
       this.world.prepareBall(this.ctx, battingTeam, bowlingTeam, instant);
       this.world.mode = 'aim';
       this.showTarget();
       this.ui.setPanel('bowl');
-      this.ui.showBowlPanel(bowler, kind, this.variation, 'aim');
+      this.ui.showBowlPanel(bowler, kind, this.variation, 'aim', this.plan);
       this.setState('bowlAim');
     }
   }
@@ -216,7 +248,20 @@ export class Game {
     if (this.state !== 'bowlAim' || !this.match) return;
     this.variation = v;
     const b = this.match.player(this.match.current.bowlerId!);
-    this.ui.showBowlPanel(b, b.bowl!.kind, v, 'aim');
+    this.ui.showBowlPanel(b, b.bowl!.kind, v, 'aim', this.plan);
+  }
+
+  /** Changes the field setting. The fielders run to the new positions. */
+  private setFieldPlan(p: FieldPlan) {
+    const m = this.match;
+    if (this.state !== 'bowlAim' || !m || p === this.plan) return;
+    this.plan = p;
+    const b = m.player(m.current.bowlerId!);
+    this.ctx = makeBallContext(m, this.placeholderSpec(b), this.rng, USER, p);
+    this.world.prepareBall(this.ctx, m.current.battingTeam, m.current.bowlingTeam, false);
+    this.world.mode = 'aim';
+    this.showTarget();
+    this.ui.showBowlPanel(b, b.bowl!.kind, this.variation, 'aim', p);
   }
 
   private bowlPress() {
@@ -239,7 +284,7 @@ export class Game {
         overstep: pos >= METER_NOBALL,
       };
       const spec = nextUserDelivery(m, input, this.rng);
-      this.ctx = makeBallContext(m, spec, this.rng, USER);
+      this.ctx = makeBallContext(m, spec, this.rng, USER, this.plan);
       this.world.prepareBall(this.ctx, m.current.battingTeam, m.current.bowlingTeam, false);
       this.world.mode = 'live';
       this.world.marker.group.visible = false;
@@ -264,8 +309,12 @@ export class Game {
     const o = sim.outcome!;
     this.lastOutcome = o;
     const wasUserBatting = this.userBats;
+    const innBefore = m.current;
+    const strikerId = innBefore.strikerId!;
+    const bowlerId = innBefore.bowlerId!;
     this.summary = m.applyBall(o.event);
     this.ui.updateScore(m);
+    this.checkMilestones(innBefore, strikerId, bowlerId, wasUserBatting);
     this.ui.showRun('none', 0, false);
     const kind = o.wicket ? 'out' : o.six ? 'six' : o.four ? 'four' : 'plain';
     this.ui.toast(o.text, o.detail, kind, o.wicket || o.six || o.four ? 2200 : 1500);
@@ -319,14 +368,104 @@ export class Game {
 
   private finishMatch() {
     const m = this.match!;
+    const res = m.result()!;
+    this.ui.radar(false);
+    // Test hook: ?tie forces one super over.
+    if (res.winner === 'tie' || (this.forceTie && this.superRound === 0)) {
+      // A tie goes to a super over (also a tied super over).
+      this.setState('tie');
+      this.sfx.cheer(0.8, 3);
+      this.ui.showTie(m, this.superRound);
+      return;
+    }
     this.setState('end');
-    this.sfx.cheer(m.result()!.winner === USER ? 1 : 0.4, 4);
+    this.sfx.cheer(res.winner === USER ? 1 : 0.4, 4);
     this.world.stadium.excite(1);
-    this.ui.showResult(m, USER);
+    const main = this.mainMatch ?? m;
+    this.updateRecords(main, res.winner === USER);
+    this.ui.showResult(main, USER, this.mainMatch ? m : null);
+  }
+
+  private startSuperOver() {
+    const prev = this.match;
+    if (!prev || this.state !== 'tie') return;
+    if (!this.mainMatch) this.mainMatch = prev;
+    this.superRound++;
+    // The team that batted second bats first in the super over.
+    this.match = new Match({ overs: 1, maxWickets: 2, difficulty: prev.config.difficulty, battingFirst: prev.innings[1].battingTeam, teams: prev.config.teams });
+    this.sim = null;
+    this.plan = 'balanced';
+    this.ui.showHud(true);
+    this.ui.updateScore(this.match);
+    this.nextBall(true);
+  }
+
+  private checkMilestones(inn: Match['current'], strikerId: string, bowlerId: string, userBatting: boolean) {
+    const m = this.match!;
+    const card = m.batCard(inn, strikerId);
+    for (const mark of [100, 50]) {
+      const key = `${m.inningsNumber}:${strikerId}:${mark}`;
+      if (card.runs >= mark && !this.milestones.has(key)) {
+        this.milestones.add(key);
+        this.milestones.add(`${m.inningsNumber}:${strikerId}:50`);
+        this.ui.milestone(`${mark === 100 ? 'HUNDRED' : 'FIFTY'}! ${m.player(strikerId).name} ${card.runs} (${card.balls})`);
+        this.sfx.cheer(userBatting ? 1 : 0.5, 3);
+        this.world.stadium.excite(1);
+        break;
+      }
+    }
+    // Hat-trick: wickets with three legal balls in a row from the same bowler.
+    const mine = inn.balls.filter((b) => b.bowlerId === bowlerId && b.legal).slice(-3);
+    const key = `${m.inningsNumber}:${bowlerId}:hat:${inn.balls.length}`;
+    if (mine.length === 3 && mine.every((b) => b.wicket && b.wicket.kind !== 'runOut') && inn.balls[inn.balls.length - 1].wicket && !this.milestones.has(key)) {
+      this.milestones.add(key);
+      this.ui.milestone(`HAT-TRICK! ${m.player(bowlerId).name}`);
+      this.sfx.cheer(userBatting ? 0.5 : 1, 3);
+    }
+  }
+
+  private updateRecords(m: Match, won: boolean) {
+    const r = this.saved.records;
+    r.played++;
+    if (won) r.won++;
+    else r.lost++;
+    if (this.mainMatch) r.tied++;
+    const bat = m.innings.find((i) => i.battingTeam === USER)!;
+    const bowl = m.innings.find((i) => i.bowlingTeam === USER)!;
+    if (bat.score > r.highScore) {
+      r.highScore = bat.score;
+      r.highScoreText = `${bat.score}/${bat.wickets} (${m.config.overs} ov)`;
+    }
+    for (const c of bat.bat) {
+      r.sixes += c.sixes;
+      if (c.runs > r.bestBat) {
+        r.bestBat = c.runs;
+        r.bestBatText = `${m.player(c.id).name} ${c.runs}${c.out ? '' : '*'} (${c.balls})`;
+      }
+    }
+    for (const c of bowl.bowl) {
+      if (c.balls && (c.wickets > r.bestBowlWkts || (c.wickets === r.bestBowlWkts && c.wickets > 0 && c.runs < r.bestBowlRuns))) {
+        r.bestBowlWkts = c.wickets;
+        r.bestBowlRuns = c.runs;
+        r.bestBowlText = `${m.player(c.id).name} ${c.wickets}/${c.runs}`;
+      }
+    }
+    saveSaved(this.saved);
+  }
+
+  private recordHtml(): string {
+    const r = this.saved.records;
+    if (!r.played) return '';
+    const lines = [`Played <b>${r.played}</b> · Won <b>${r.won}</b> · Lost <b>${r.lost}</b>${r.tied ? ` · Super overs <b>${r.tied}</b>` : ''}`];
+    if (r.highScoreText) lines.push(`Highest total <b>${r.highScoreText}</b> · Sixes <b>${r.sixes}</b>`);
+    if (r.bestBatText) lines.push(`Best batting <b>${r.bestBatText}</b>`);
+    if (r.bestBowlText) lines.push(`Best bowling <b>${r.bestBowlText}</b>`);
+    return lines.join('<br>');
   }
 
   private setPaused(p: boolean) {
     if (this.state === 'menu' || this.state === 'end' || this.state === 'break') return;
+    if (this.state === 'tie') return;
     if (p === this.paused) return;
     this.paused = p;
     this.ui.showPause(p);
@@ -606,6 +745,20 @@ export class Game {
     if (this.state === 'ball' && this.userBats && sim) this.ui.showRun(sim.runHint(), sim.runsDone, sim.running);
     else if (this.state !== 'result') this.ui.showRun('none', 0, false);
     if (this.state === 'bowlMeter') this.ui.setMeter(this.meterPos());
+    // Field map.
+    const live = this.match && this.ctx && this.state !== 'menu' && this.state !== 'end' && this.state !== 'break' && this.state !== 'tie' && this.state !== 'replay';
+    if (live && this.ctx) {
+      const c = this.ctx;
+      const play = !!sim && sim.hasContact;
+      const fs = c.fielders.map((f, i) => (play ? sim!.fielderPos(i) : f));
+      const ball = sim && (sim.phase === 'flight' || play) ? sim.ball : null;
+      const prog = sim ? sim.strikerProgress : 0;
+      const z0 = STRIKER_CREASE_Z;
+      this.ui.radar(true, fs, ball, this.userBats ? '#f9cd05' : '#ff4d5e', [
+        { x: 0.6, z: z0 + (-2 * z0) * prog },
+        { x: -0.6, z: -z0 + 2 * z0 * prog },
+      ]);
+    } else this.ui.radar(false);
     if (this.bannerT > 0) this.bannerT -= 1 / 60;
   }
 
@@ -629,6 +782,8 @@ export class Game {
       inZone: !!sim && sim.ballInZone,
       ballDist: sim ? sim.ballDist : null,
       innings: m ? m.inningsNumber : 0,
+      superOver: this.superRound,
+      fieldPlan: this.plan,
       score: inn?.score ?? 0,
       wickets: inn?.wickets ?? 0,
       legalBalls: inn?.legalBalls ?? 0,

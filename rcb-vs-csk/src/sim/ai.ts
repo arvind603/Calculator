@@ -1,5 +1,5 @@
 import { Delivery, slowFactor, type DeliverySpec, type Variation } from './delivery';
-import { STRIKER_CREASE_Z, STRIKER_STUMPS_Z, legSign } from './field';
+import { STRIKER_CREASE_Z, STRIKER_STUMPS_Z, legSign, type FieldPlan } from './field';
 import type { Fielder } from './fielding';
 import type { Match } from './match';
 import { clamp, type Rng } from './rng';
@@ -293,6 +293,20 @@ export function aiChooseBowler(match: Match, rng: Rng): Player {
     }
   }
   return best;
+}
+
+/** Field setting of the computer's captain. */
+export function aiFieldPlan(sit: Situation): FieldPlan {
+  if (sit.target !== null) {
+    const need = sit.target - sit.score;
+    const rrr = sit.ballsLeft > 0 ? (need * 6) / sit.ballsLeft : 36;
+    if (rrr > 13) return 'defend';
+    if (rrr < 6.5) return 'attack';
+  }
+  if (sit.phase === 'death') return 'defend';
+  if (sit.phase === 'powerplay' && sit.wicketsDown <= 1 && sit.oversTotal >= 5) return 'attack';
+  if (sit.wicketsDown >= 6) return 'attack';
+  return 'balanced';
 }
 
 export function situationOf(match: Match): Situation {

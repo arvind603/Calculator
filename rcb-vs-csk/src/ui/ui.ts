@@ -2,6 +2,7 @@ import { VARIATIONS, VARIATION_LABEL } from '../sim/ai';
 import type { Variation } from '../sim/delivery';
 import { Match, maxOversPerBowler } from '../sim/match';
 import type { ShotType, TimingClass } from '../sim/shot';
+import type { FieldPlan } from '../sim/field';
 import { MAX_OVERSEAS, RCB_SQUAD, validateXi } from '../sim/squads';
 import type { BowlKind, Difficulty, Hand, OversOption, Player, TeamId } from '../sim/types';
 import { scorecard } from './scorecard';
@@ -23,6 +24,9 @@ export interface UIHandlers {
   sound(on: boolean): void;
   pickBowler(id: string): void;
   variation(v: Variation): void;
+  fieldPlan(p: FieldPlan): void;
+  superOver(): void;
+  options(o: StartOptions): void;
   bowl(): void;
   next(): void;
   skipReplay(): void;
@@ -59,6 +63,8 @@ export class UI {
   private xi: Player[] = [];
   private xiSel: string | null = null;
   private lastScoreKey = '';
+  private record = '';
+  private mileTimer = 0;
 
   constructor(root: HTMLElement, handlers: UIHandlers) {
     this.root = root;
@@ -80,6 +86,8 @@ export class UI {
       <div class="banner hidden" data-q="banner"></div>
       <div class="replay-tag hidden" data-q="replay">REPLAY</div>
       <button class="skip hidden" data-act="skip" data-q="skip">Skip</button>
+      <canvas class="radar hidden" data-q="radar" width="208" height="208" aria-label="Field map"></canvas>
+      <div class="mile" data-q="mile"></div>
       <div class="speed" data-q="speed"></div>
       <div class="toast" data-q="toast"><div class="big" data-q="toastBig"></div><div class="small" data-q="toastSmall"></div></div>
       <div class="timing" data-q="timing">
@@ -99,6 +107,7 @@ export class UI {
       </div>
       <div class="bowlpanel hidden" data-q="bowlpanel">
         <div class="who" data-q="bowlWho"></div>
+        <div class="seg small" data-q="fieldSeg"></div>
         <div class="seg" data-q="varSeg"></div>
         <div class="meter" data-q="meter"><div class="nb">NO-BALL</div><div class="needle" data-q="needle"></div></div>
         <button class="cta" data-act="bowl" data-q="bowlBtn">BOWL</button>
@@ -118,12 +127,13 @@ export class UI {
   // ---------- Events ----------
 
   private onClick(e: Event) {
-    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act],[data-shot],[data-var],[data-opt],[data-pl],[data-bowler],[data-tab]');
+    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act],[data-shot],[data-var],[data-plan],[data-opt],[data-pl],[data-bowler],[data-tab]');
     if (!t) return;
     const d = t.dataset;
     if (d.act !== 'run') this.h.uiClick();
     if (d.shot) return this.h.shotType(d.shot as ShotType);
     if (d.var) return this.h.variation(d.var as Variation);
+    if (d.plan) return this.h.fieldPlan(d.plan as FieldPlan);
     if (d.bowler) return this.h.pickBowler(d.bowler);
     if (d.pl) return this.xiTap(d.pl);
     if (d.tab) return this.showTab(Number(d.tab));
@@ -133,6 +143,7 @@ export class UI {
       if (k === 'overs') this.opts.overs = Number(v) as OversOption;
       if (k === 'diff') this.opts.difficulty = v as Difficulty;
       t.parentElement!.querySelectorAll('button').forEach((b) => b.classList.toggle('sel', b === t));
+      this.h.options({ ...this.opts });
       return;
     }
     switch (d.act) {
@@ -169,6 +180,8 @@ export class UI {
         return this.h.next();
       case 'skip':
         return this.h.skipReplay();
+      case 'superover':
+        return this.h.superOver();
     }
   }
 
@@ -200,7 +213,12 @@ export class UI {
 
   // ---------- Menu ----------
 
-  showMenu(xi: Player[]) {
+  setOptions(o: StartOptions) {
+    this.opts = { ...o };
+  }
+
+  showMenu(xi: Player[], record = '') {
+    if (record) this.record = record;
     this.xi = [...xi];
     this.hud.classList.add('hidden');
     this.setSheet(null);
@@ -229,6 +247,7 @@ export class UI {
         </div>
       </div>
       <button class="cta" data-act="start">START MATCH</button>
+      ${this.record ? `<div class="card record"><h3>Your record</h3>${this.record}</div>` : ''}
       <div class="row">
         <button class="ghost" data-act="xi">Change RCB XI</button>
         <button class="ghost" data-act="help">How to play</button>
@@ -377,7 +396,7 @@ export class UI {
       chase = need > 0 ? `Target ${inn.target} · Need ${need} off ${left} · RRR ${isFinite(rrr) ? rrr.toFixed(2) : '-'}` : `Target ${inn.target} reached`;
     }
     const phase = match.phase(inn);
-    const tags = (phase === 'powerplay' ? '<span class="tag">PP</span>' : '') + (inn.freeHit ? '<span class="tag fh">FREE HIT</span>' : '');
+    const tags = (match.config.overs === 1 ? '<span class="tag so">SUPER OVER</span>' : phase === 'powerplay' ? '<span class="tag">PP</span>' : '') + (inn.freeHit ? '<span class="tag fh">FREE HIT</span>' : '');
     const html = `
       <div class="sb-main"><span class="team ${inn.battingTeam}">${inn.battingTeam}</span><span class="score">${inn.score}/${inn.wickets}</span>
         <span class="overs">${match.oversText(inn)}<small> / ${match.config.overs}</small></span>${tags}<span class="rate">CRR ${match.runRate(inn).toFixed(2)}</span></div>
@@ -484,6 +503,74 @@ export class UI {
     this.speedTimer = window.setTimeout(() => this.q.speed.classList.remove('show'), 3200);
   }
 
+  /** Short notice for a milestone (fifty, hundred, hat-trick). */
+  milestone(text: string, ms = 3200) {
+    this.q.mile.textContent = text;
+    this.q.mile.classList.add('show');
+    clearTimeout(this.mileTimer);
+    this.mileTimer = window.setTimeout(() => this.q.mile.classList.remove('show'), ms);
+  }
+
+  /** Field map. Positions are in metres. The bowler's end is at the bottom, like the camera. */
+  radar(show: boolean, fielders: { x: number; z: number }[] = [], ball: { x: number; z: number } | null = null, fieldColor = '#f9cd05', batters: { x: number; z: number }[] = []) {
+    const c = this.q.radar as HTMLCanvasElement;
+    c.classList.toggle('hidden', !show);
+    if (!show) return;
+    const g = c.getContext('2d');
+    if (!g) return;
+    const S = c.width;
+    const m = (S / 2 - 6) / 66;
+    const X = (x: number) => S / 2 + x * m;
+    const Y = (z: number) => S / 2 + z * m;
+    g.clearRect(0, 0, S, S);
+    g.beginPath();
+    g.arc(S / 2, S / 2, 66 * m, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(12, 60, 26, 0.86)';
+    g.fill();
+    g.lineWidth = 3;
+    g.strokeStyle = 'rgba(255,255,255,0.85)';
+    g.stroke();
+    // 30-yard circle.
+    g.setLineDash([5, 6]);
+    g.lineWidth = 1.5;
+    g.strokeStyle = 'rgba(255,255,255,0.4)';
+    g.beginPath();
+    g.arc(X(0), Y(-10.06), 27.43 * m, Math.PI, 0);
+    g.lineTo(X(27.43), Y(10.06));
+    g.arc(X(0), Y(10.06), 27.43 * m, 0, Math.PI);
+    g.closePath();
+    g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = '#cdb27a';
+    g.fillRect(X(-1.6), Y(-11), 3.2 * m, 22 * m);
+    for (const f of fielders) {
+      g.beginPath();
+      g.arc(X(f.x), Y(f.z), 5.5, 0, Math.PI * 2);
+      g.fillStyle = fieldColor;
+      g.fill();
+      g.lineWidth = 1.5;
+      g.strokeStyle = 'rgba(0,0,0,0.7)';
+      g.stroke();
+    }
+    for (const b of batters) {
+      g.beginPath();
+      g.arc(X(b.x), Y(b.z), 4, 0, Math.PI * 2);
+      g.fillStyle = '#ffffff';
+      g.fill();
+    }
+    if (ball) {
+      const d = Math.hypot(ball.x, ball.z);
+      const k = d > 68 ? 68 / d : 1;
+      g.beginPath();
+      g.arc(X(ball.x * k), Y(ball.z * k), 4.5, 0, Math.PI * 2);
+      g.fillStyle = '#ff3b3b';
+      g.fill();
+      g.lineWidth = 2;
+      g.strokeStyle = '#fff';
+      g.stroke();
+    }
+  }
+
   banner(text: string | null, info = false) {
     this.q.banner.classList.toggle('hidden', !text);
     this.q.banner.classList.toggle('info', info);
@@ -497,7 +584,11 @@ export class UI {
 
   // ---------- Bowling ----------
 
-  showBowlPanel(bowler: Player, kind: BowlKind, variation: Variation, stage: 'aim' | 'meter' | 'done') {
+  showBowlPanel(bowler: Player, kind: BowlKind, variation: Variation, stage: 'aim' | 'meter' | 'done', plan: FieldPlan = 'balanced') {
+    this.q.fieldSeg.innerHTML = (['attack', 'balanced', 'defend'] as FieldPlan[])
+      .map((f) => `<button data-plan="${f}" class="${f === plan ? 'sel' : ''}">${f === 'attack' ? 'ATTACK' : f === 'balanced' ? 'BALANCED' : 'DEFEND'}<small>field</small></button>`)
+      .join('');
+    this.q.fieldSeg.classList.toggle('hidden', stage !== 'aim');
     this.q.bowlWho.textContent =
       stage === 'aim' ? `${bowler.name}: select a variation, tap the pitch, then press BOWL` : stage === 'meter' ? 'Stop the meter near the centre' : '';
     this.q.varSeg.innerHTML = VARIATIONS[kind]
@@ -555,9 +646,9 @@ export class UI {
     this.tabs = [scorecard(match, inn)];
     this.setScreen(
       el(`<div class="screen solid top"><div class="inner">
-        <h2 class="head">Innings break</h2>
+        <h2 class="head">${match.config.overs === 1 ? 'Super over: innings break' : 'Innings break'}</h2>
         <div class="result-line">${esc(match.team(inn.battingTeam).short)} ${inn.score}/${inn.wickets} <small>(${match.oversText(inn)} ov)</small></div>
-        <p class="sub">${esc(chasing.name)} need <b>${target}</b> runs in ${match.config.overs} overs. Required rate ${(target / match.config.overs).toFixed(2)}.
+        <p class="sub">${esc(chasing.name)} need <b>${target}</b> runs in ${match.config.overs} over${match.config.overs > 1 ? 's' : ''}. Required rate ${(target / match.config.overs).toFixed(2)}.
         ${chasing.id === userTeam ? 'You bat now.' : 'You bowl now.'}</p>
         <button class="cta" data-act="next">START THE CHASE</button>
         <div data-tabhost>${this.tabs[0]}</div>
@@ -566,8 +657,26 @@ export class UI {
     );
   }
 
-  showResult(match: Match, userTeam: TeamId) {
-    const res = match.result()!;
+  /** Tie screen with the offer of a super over. */
+  showTie(match: Match, round: number) {
+    const [a, b] = match.innings;
+    this.hud.classList.add('hidden');
+    this.setSheet(null);
+    const first = match.team(b.battingTeam);
+    this.setScreen(
+      el(`<div class="screen solid"><div class="inner">
+        <h2 class="head">${round ? 'Super over tied' : 'Match tied'}</h2>
+        <div class="result-line">${esc(match.team(a.battingTeam).short)} ${a.score}/${a.wickets} · ${esc(first.short)} ${b.score}/${b.wickets}</div>
+        <p class="sub">A super over decides the match: one over each, two wickets. ${esc(first.name)} bat first.</p>
+        <button class="cta" data-act="superover">PLAY THE SUPER OVER</button>
+      </div></div>`),
+    );
+  }
+
+  /** superOver: the deciding super over, if the main match was a tie. */
+  showResult(match: Match, userTeam: TeamId, superOver: Match | null = null) {
+    const res = superOver ? superOver.result()! : match.result()!;
+    if (superOver) res.text = `${res.winner} won the super over`;
     const potm = match.playerOfTheMatch();
     const won = res.winner === userTeam;
     this.hud.classList.add('hidden');
@@ -579,7 +688,7 @@ export class UI {
       el(`<div class="screen solid top"><div class="inner">
         <h2 class="head">Match result</h2>
         <div class="result-line ${res.winner === 'tie' ? '' : won ? 'win' : 'lose'}">${esc(res.text)}</div>
-        <p class="sub">${line(a)} · ${line(b)}</p>
+        <p class="sub">${line(a)} · ${line(b)}${superOver ? `<br>Super over: ${superOver.innings.map((i) => `${i.battingTeam} ${i.score}/${i.wickets}`).join(' · ')}` : ''}</p>
         ${potm ? `<div class="card potm"><div class="star">★</div><div><span>Player of the match</span><b>${esc(potm.player.name)} (${potm.team})</b><span>${esc(potm.line)}</span></div></div>` : ''}
         <button class="cta" data-act="quit">PLAY AGAIN</button>
         <div class="tabs">

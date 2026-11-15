@@ -17,9 +17,9 @@ npm run preview    # serve the production build
 ## Tests
 
 ```
-npm test           # unit tests for the simulation (57 tests)
+npm test           # unit tests for the simulation (59 tests)
 npm run balance    # balance check: a bot plays many matches and prints runs per over
-npm run e2e        # headless browser test: plays a full 2-over match
+npm run e2e        # headless browser test: a full 2-over match, then a super over
 npm run screenshots  # saves screenshots at 390 x 780 and 1280 x 720 in e2e/out
 ```
 
@@ -40,8 +40,17 @@ Bowling
 - Select the bowler for each over.
 - Select a variation, tap the pitch for line and length (or use the arrows), press BOWL, then stop the meter.
 - The dark red end of the meter is a no-ball.
+- Select the field: Attack, Balanced or Defend. The fielders move at once.
 
 Other: P or Esc = pause, M = sound.
+
+## Features
+
+- Field map (top right): fielders, batters and the ball. Use it to find the gaps.
+- Field settings for your bowling. The computer's captain also changes the field with the match situation.
+- A tied match goes to a super over (one over each, two wickets).
+- Milestone notices: fifty, hundred, hat-trick.
+- Your settings, your XI and your records stay in the browser (local storage).
 
 ## Structure
 
@@ -57,7 +66,7 @@ src/sim/     Match simulation. No rendering or DOM code. Fully unit-tested.
   squads.ts    IPL 2026 squads
   autoplay.ts  Bot player for tests and the balance check
 src/render/  Three.js scene: stadium, player figures, poses, effects, cameras, replays
-src/game/    Game flow, input and sound
+src/game/    Game flow, input, sound and saved records
 src/ui/      HUD, menus, scorecards, wagon wheel
 tests/       Unit tests
 e2e/         Headless browser test and screenshot script

@@ -6,7 +6,6 @@ import type {
   Difficulty,
   DismissalKind,
   FallOfWicket,
-  OversOption,
   Phase,
   Player,
   TeamId,
@@ -15,7 +14,10 @@ import type {
 } from './types';
 
 export interface MatchConfig {
-  overs: OversOption;
+  /** Overs per side. 1 is used for a super over. */
+  overs: number;
+  /** Wickets that end an innings. Default 10. A super over uses 2. */
+  maxWickets?: number;
   difficulty: Difficulty;
   /** Team that bats first. */
   battingFirst: TeamId;
@@ -59,8 +61,10 @@ export interface MatchResult {
   text: string;
 }
 
-export const POWERPLAY_OVERS: Record<OversOption, number> = { 2: 1, 5: 2, 10: 3, 20: 6 };
-export const DEATH_OVERS: Record<OversOption, number> = { 2: 1, 5: 1, 10: 2, 20: 4 };
+export const POWERPLAY_OVERS: Record<number, number> = { 1: 1, 2: 1, 5: 2, 10: 3, 20: 6 };
+export const DEATH_OVERS: Record<number, number> = { 1: 1, 2: 1, 5: 1, 10: 2, 20: 4 };
+const powerplayOvers = (overs: number) => POWERPLAY_OVERS[overs] ?? Math.max(1, Math.round(overs * 0.3));
+const deathOvers = (overs: number) => DEATH_OVERS[overs] ?? Math.max(1, Math.round(overs * 0.2));
 
 export const maxOversPerBowler = (overs: number) => Math.ceil(overs / 5);
 
@@ -96,6 +100,10 @@ export class Match {
 
   get complete(): boolean {
     return this.innings.length === 2 && this.innings[1].complete;
+  }
+
+  get maxWickets(): number {
+    return this.config.maxWickets ?? 10;
   }
 
   get totalBalls(): number {
@@ -147,8 +155,8 @@ export class Match {
 
   phase(inn: Innings = this.current): Phase {
     const over = Math.floor(inn.legalBalls / 6);
-    if (over < POWERPLAY_OVERS[this.config.overs]) return 'powerplay';
-    if (over >= this.config.overs - DEATH_OVERS[this.config.overs]) return 'death';
+    if (over < powerplayOvers(this.config.overs)) return 'powerplay';
+    if (over >= this.config.overs - deathOvers(this.config.overs)) return 'death';
     return 'middle';
   }
 
@@ -297,7 +305,7 @@ export class Match {
 
     // --- Innings end ---
     const chaseWon = inn.target !== null && inn.score >= inn.target;
-    const allOut = inn.wickets >= 10 || inn.strikerId === null || inn.nonStrikerId === null;
+    const allOut = inn.wickets >= this.maxWickets || inn.strikerId === null || inn.nonStrikerId === null;
     const oversDone = inn.legalBalls >= this.totalBalls;
     let overComplete = false;
     if (legal && inn.legalBalls % 6 === 0) {
@@ -338,7 +346,7 @@ export class Match {
     const nameA = this.team(a.battingTeam).short;
     const nameB = this.team(b.battingTeam).short;
     if (b.score > a.score) {
-      const wk = 10 - b.wickets;
+      const wk = this.maxWickets - b.wickets;
       const left = this.ballsLeft(b);
       return {
         winner: b.battingTeam,

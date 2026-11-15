@@ -1,17 +1,20 @@
-import { aiChooseBowler, aiDelivery, situationOf, userDelivery, type BowlInput } from './ai';
+import { aiChooseBowler, aiDelivery, aiFieldPlan, situationOf, userDelivery, type BowlInput } from './ai';
 import { BallSim, buildFielders, type BallContext, type BallOutcome } from './ballsim';
 import type { DeliverySpec } from './delivery';
+import type { FieldPlan } from './field';
 import type { Match } from './match';
 import type { Rng } from './rng';
 import type { TeamId } from './types';
 
 /** Builds the context for the next ball of the match. */
-export function makeBallContext(match: Match, spec: DeliverySpec, rng: Rng, userTeam: TeamId): BallContext {
+export function makeBallContext(match: Match, spec: DeliverySpec, rng: Rng, userTeam: TeamId, userPlan: FieldPlan = 'balanced'): BallContext {
   const inn = match.current;
   const striker = match.player(inn.strikerId!);
   const nonStriker = match.player(inn.nonStrikerId!);
   const bowler = match.player(inn.bowlerId!);
-  const fielders = buildFielders(match.team(inn.bowlingTeam), bowler, striker, match.phase(inn), match.config.difficulty);
+  const sit = situationOf(match);
+  const plan = inn.bowlingTeam === userTeam ? userPlan : aiFieldPlan(sit);
+  const fielders = buildFielders(match.team(inn.bowlingTeam), bowler, striker, match.phase(inn), match.config.difficulty, plan);
   return {
     rng,
     difficulty: match.config.difficulty,
@@ -22,7 +25,7 @@ export function makeBallContext(match: Match, spec: DeliverySpec, rng: Rng, user
     spec,
     freeHit: inn.freeHit,
     userBatting: inn.battingTeam === userTeam,
-    situation: situationOf(match),
+    situation: sit,
   };
 }
 

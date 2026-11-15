@@ -12,6 +12,7 @@ import {
   checkField,
   getField,
   maxOutsideRing,
+  type FieldPlan,
 } from '../src/sim/field';
 import { planFielding, simulatePath } from '../src/sim/fielding';
 import type { MatchConfig } from '../src/sim/match';
@@ -70,9 +71,10 @@ function play(sim: BallSim, type: ShotType | null, angle = 0, tapDist = IDEAL_TA
 describe('field settings', () => {
   it('obeys the powerplay and leg-side limits for both hands', () => {
     for (const key of ALL_FIELD_KEYS) {
-      const [phase, kind] = key.split('-') as [Phase, BowlKind];
+      const [plan, phase, kind] = key.split('-') as [FieldPlan, Phase, BowlKind];
       for (const hand of ['R', 'L'] as Hand[]) {
-        const f = getField(phase, kind, hand);
+        const f = getField(phase, kind, hand, plan);
+        expect(new Set(f.map((x) => x.name)).size, key).toBe(9);
         const c = checkField(f, hand);
         expect(f).toHaveLength(9);
         expect(c.outsideRing, key).toBeLessThanOrEqual(maxOutsideRing(phase));
